@@ -14,10 +14,13 @@ export default function ThreeBackground() {
       1000,
     );
 
-    const renderer = new THREE.WebGLRenderer({ alpha: true });
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
 
-    mountRef.current.appendChild(renderer.domElement);
+    const mount = mountRef.current;
+    if (!mount) return;
+    mount.appendChild(renderer.domElement);
 
     const geometry = new THREE.BufferGeometry();
     const vertices = [];
@@ -45,8 +48,16 @@ export default function ThreeBackground() {
 
     camera.position.z = 60;
 
+    const onResize = () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    };
+    window.addEventListener("resize", onResize);
+
+    let rafId = 0;
     const animate = () => {
-      requestAnimationFrame(animate);
+      rafId = requestAnimationFrame(animate);
 
       particles.rotation.y += 0.0008;
       particles.rotation.x += 0.0003;
@@ -55,6 +66,17 @@ export default function ThreeBackground() {
     };
 
     animate();
+
+    return () => {
+      window.removeEventListener("resize", onResize);
+      cancelAnimationFrame(rafId);
+      geometry.dispose();
+      material.dispose();
+      renderer.dispose();
+      if (renderer.domElement?.parentNode) {
+        renderer.domElement.parentNode.removeChild(renderer.domElement);
+      }
+    };
   }, []);
 
   return <div ref={mountRef} className="absolute inset-0 -z-10"></div>;

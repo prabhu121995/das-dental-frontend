@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240" fill="none">
+  <defs>
+    <linearGradient id="g" x1="38" y1="24" x2="206" y2="216" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#00D4FF"/>
+      <stop offset="0.55" stop-color="#0EA5E9"/>
+      <stop offset="1" stop-color="#0F172A"/>
+    </linearGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feColorMatrix in="blur" type="matrix"
+        values="1 0 0 0 0
+                0 1 0 0 0
+                0 0 1 0 0
+                0 0 0 .35 0" result="shadow"/>
+      <feMerge>
+        <feMergeNode in="shadow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Outer ring -->
+  <circle cx="120" cy="120" r="92" stroke="url(#g)" stroke-width="16" opacity="0.95" filter="url(#soft)"/>
+
+  <!-- Inner shield -->
+  <path d="M120 60c26 16 52 18 66 18v50c0 46-33 72-66 88-33-16-66-42-66-88V78c14 0 40-2 66-18Z"
+        fill="#0F172A" fill-opacity="0.9" stroke="#0EA5E9" stroke-opacity="0.55" stroke-width="2"/>
+
+  <!-- Medical cross -->
+  <path d="M111 98c0-3.3 2.7-6 6-6h6c3.3 0 6 2.7 6 6v18h18c3.3 0 6 2.7 6 6v6c0 3.3-2.7 6-6 6h-18v18c0 3.3-2.7 6-6 6h-6c-3.3 0-6-2.7-6-6v-18H93c-3.3 0-6-2.7-6-6v-6c0-3.3 2.7-6 6-6h18V98Z"
+        fill="#00D4FF" fill-opacity="0.95"/>
+
+  <!-- Wordmark -->
+  <text x="120" y="206" text-anchor="middle" font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial"
+        font-size="22" font-weight="700" letter-spacing="2" fill="#E2E8F0" fill-opacity="0.9">
+    DAS
+  </text>
+</svg>
