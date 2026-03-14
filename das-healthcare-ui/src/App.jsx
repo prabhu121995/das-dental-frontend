@@ -2,7 +2,6 @@ import "./App.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
 import AppLayout from "./layout/AppLayout";
-import AppOverview from "./pages/AppOverview";
 import LoginRecordsPage from "./pages/LoginRecordsPage";
 import BreakRecordsPage from "./pages/BreakRecordsPage";
 import TimeOnStatusRecordsPage from "./pages/TimeOnStatusRecordsPage";
@@ -12,6 +11,10 @@ import ModMedRecordsPage from "./pages/ModMedRecordsPage";
 import NextechRecordsPage from "./pages/NextechRecordsPage";
 import RefusedRecordsPage from "./pages/RefusedRecordsPage";
 import DeleteReportsPage from "./pages/DeleteReportsPage";
+import DashboardPage from "./pages/DashboardPage";
+import OnlineApptPage from "./pages/OnlineApptPage";
+import TeamPage from "./pages/settings/TeamPage";
+import VonagePage from "./pages/settings/VonagePage";
 
 function ProtectedRoute({ children }) {
   const token =
@@ -36,7 +39,9 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<AppOverview />} />
+          <Route index element={<Navigate to="/app/online-appt" replace />} />
+          <Route path="overview" element={<Navigate to="/app/dashboard" replace />} />
+          <Route path="dashboard" element={<DashboardPage />} />
           <Route path="login" element={<LoginRecordsPage />} />
           <Route path="break" element={<BreakRecordsPage />} />
           <Route path="time-on-status" element={<TimeOnStatusRecordsPage />} />
@@ -49,6 +54,10 @@ export default function App() {
           <Route path="nextech" element={<NextechRecordsPage />} />
           <Route path="refused" element={<RefusedRecordsPage />} />
           <Route path="delete-records" element={<DeleteReportsPage />} />
+          <Route path="online-appt" element={<OnlineApptPage />} />
+          <Route path="settings/team" element={<TeamPage />} />
+          <Route path="settings/vonage" element={<VonagePage />} />
+          <Route path="*" element={<Navigate to="/app" replace />} />
         </Route>
 
         <Route path="*" element={<Navigate to="/" replace />} />

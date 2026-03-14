@@ -3,3 +3,10 @@
 @tailwind components;
 @tailwind utilities;
 /* stylelint-enable at-rule-no-unknown */
+
+/* Theme colors (fixed) */
+:root {
+  --color-primary: #0f172a;
+  --color-accent: #00d4ff;
+  --color-accent-soft: #0ea5e9;
+}

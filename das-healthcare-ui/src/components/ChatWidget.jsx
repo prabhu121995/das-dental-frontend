@@ -22,7 +22,7 @@ const REPORT_TYPES = [
 
 const MODES = ["Aggregated metrics", "Raw rows"];
 
-export default function ChatWidget() {
+export default function ChatWidget({ inline = false }) {
   const [open, setOpen] = useState(false);
   const [reportType, setReportType] = useState("All reports");
   const [mode, setMode] = useState("Aggregated metrics");
@@ -47,13 +47,23 @@ export default function ChatWidget() {
   }, [open]);
 
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-40 sm:bottom-6 sm:right-6">
+    <div
+      className={
+        inline
+          ? "pointer-events-none relative z-40 flex shrink-0 items-center"
+          : "pointer-events-none fixed bottom-4 right-4 z-40 sm:bottom-6 sm:right-6"
+      }
+    >
       <div
         ref={containerRef}
-        className="pointer-events-auto flex items-end justify-end gap-3"
+        className={`pointer-events-auto flex items-end justify-end gap-3 ${inline ? "items-center" : ""}`}
       >
         {open && (
-          <div className="w-[400px] sm:w-[460px] h-[520px] sm:h-[560px] overflow-hidden rounded-3xl border border-slate-800/80 bg-slate-950/95 shadow-2xl shadow-slate-900/90 backdrop-blur-xl">
+          <div
+            className={`w-[400px] sm:w-[460px] h-[520px] sm:h-[560px] overflow-hidden rounded-3xl border border-slate-800/80 bg-slate-950/95 shadow-2xl shadow-slate-900/90 backdrop-blur-xl ${
+              inline ? "absolute right-0 top-full z-50 mt-2" : ""
+            }`}
+          >
             <div className="flex items-center justify-between border-b border-slate-800/80 bg-gradient-to-r from-medical/20 via-slate-900 to-slate-950 px-4 py-3">
               <div className="flex items-center gap-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-gradient-to-br from-medical to-healthcare text-slate-950 shadow-lg shadow-medical/40">

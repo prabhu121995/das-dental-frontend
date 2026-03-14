@@ -32,10 +32,15 @@ export default function Login() {
 
     try {
       const res = await loginUser(username, password);
-
-      localStorage.setItem("token", res.access_token);
-      localStorage.setItem("role", res.role);
-      window.location.href = "/app";
+      const token = res.access_token ?? res.token ?? res.accessToken;
+      if (!token) {
+        setError("Invalid response: no token received");
+        return;
+      }
+      localStorage.setItem("token", token);
+      if (res.role != null) localStorage.setItem("role", res.role);
+      if (res.user_id != null) localStorage.setItem("user_id", String(res.user_id));
+      window.location.href = "/app/online-appt";
     } catch {
       setError("Invalid username or password");
     }

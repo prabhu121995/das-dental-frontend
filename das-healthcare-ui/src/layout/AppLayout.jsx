@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
+import { motion as Motion } from "framer-motion";
+import { Sun, Moon, ChevronDown, ChevronRight } from "lucide-react";
 import ChatWidget from "../components/ChatWidget";
 
-const MENU_ITEMS = [
-  { key: "overview", label: "Overview", path: "/app" },
+/** Submenus under Reports (all report types) */
+const REPORT_MENU_ITEMS = [
   { key: "login", label: "Login", path: "/app/login" },
   { key: "break", label: "Break", path: "/app/break" },
   { key: "time-on-status", label: "Time on Status", path: "/app/time-on-status" },
@@ -16,15 +17,31 @@ const MENU_ITEMS = [
   { key: "delete", label: "Delete Records", path: "/app/delete-records" },
 ];
 
-const DEFAULT_COLORS = {
-  primary: "#0f172a",
-  accent: "#00d4ff",
-  accentSoft: "#0ea5e9",
-};
+/** Submenus under Settings (admin/teamlead only) */
+const SETTINGS_MENU_ITEMS = [
+  { key: "settings-team", label: "Team", path: "/app/settings/team" },
+  { key: "settings-vonage", label: "Vonage", path: "/app/settings/vonage" },
+];
+
+/** All link items for activeMenu lookup: Dashboard, report submenus, Settings submenus, Online Appt */
+const ALL_MENU_ITEMS = [
+  { key: "dashboard", label: "Dashboard", path: "/app/dashboard" },
+  ...REPORT_MENU_ITEMS,
+  ...SETTINGS_MENU_ITEMS,
+  { key: "online-appt", label: "Online Appt", path: "/app/online-appt" },
+];
+
+const REPORTS_STORAGE_KEY = "das_sidebar_reports_open";
+const SETTINGS_STORAGE_KEY = "das_sidebar_settings_open";
+
+/** Admin and teamlead can access Dashboard and Reports. Agent can only access Online Appt. */
+function canAccessOverviewDashboardReports(role) {
+  const r = (role ?? "").trim().toLowerCase();
+  return r === "admin" || r === "teamlead";
+}
 
 const STORAGE_KEYS = {
   THEME: "das_theme",
-  COLORS: "das_colors",
   PROFILE: "das_profile",
 };
 
@@ -32,61 +49,112 @@ export default function AppLayout() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const [isDark, setIsDark] = useState(true);
+  const [isDark, setIsDark] = useState(() => {
+    try {
+      return localStorage.getItem(STORAGE_KEYS.THEME) === "dark";
+    } catch {
+      return false;
+    }
+  });
   const [profileOpen, setProfileOpen] = useState(false);
-  const [colors, setColors] = useState(DEFAULT_COLORS);
-  const [profile, setProfile] = useState({
-    name: "Admin User",
-    role: localStorage.getItem("role") ?? "Admin",
-    avatar: null,
+  const profileRef = useRef(null);
+  const [reportsOpen, setReportsOpen] = useState(() => {
+    try {
+      const saved = localStorage.getItem(REPORTS_STORAGE_KEY);
+      return saved !== "false";
+    } catch {
+      return true;
+    }
+  });
+  const [settingsOpen, setSettingsOpen] = useState(() => {
+    try {
+      const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
+      return saved !== "false";
+    } catch {
+      return true;
+    }
+  });
+  const [profile, setProfile] = useState(() => {
+    try {
+      const role = localStorage.getItem("role") ?? "Admin";
+      const saved = localStorage.getItem(STORAGE_KEYS.PROFILE);
+      const parsed = saved ? JSON.parse(saved) : {};
+      return { name: "Admin User", role, avatar: null, ...parsed };
+    } catch {
+      return { name: "Admin User", role: "Admin", avatar: null };
+    }
   });
 
-  useEffect(() => {
-    try {
-      const savedTheme = localStorage.getItem(STORAGE_KEYS.THEME);
-      const savedColors = localStorage.getItem(STORAGE_KEYS.COLORS);
-      const savedProfile = localStorage.getItem(STORAGE_KEYS.PROFILE);
+  const role = (profile?.role ?? (typeof window !== "undefined" ? localStorage.getItem("role") : null) ?? "Admin").trim();
+  const canAccessReports = canAccessOverviewDashboardReports(role);
 
-      if (savedTheme) setIsDark(savedTheme === "dark");
-      if (savedColors) setColors(JSON.parse(savedColors));
-      if (savedProfile) {
-        setProfile((prev) => ({ ...prev, ...JSON.parse(savedProfile) }));
-      }
-    } catch {
-      // ignore parse issues
-    }
-  }, []);
+  const activeMenu = useMemo(
+    () =>
+      ALL_MENU_ITEMS.find((item) => location.pathname.startsWith(item.path)) ?? ALL_MENU_ITEMS[0],
+    [location.pathname],
+  );
+
+  const isReportSubmenuActive = REPORT_MENU_ITEMS.some((item) => item.key === activeMenu.key);
+  const isSettingsSubmenuActive = SETTINGS_MENU_ITEMS.some((item) => item.key === activeMenu.key);
+
+  const toggleReports = () => {
+    const next = !reportsOpen;
+    setReportsOpen(next);
+    try {
+      localStorage.setItem(REPORTS_STORAGE_KEY, String(next));
+    } catch {}
+  };
+
+  const toggleSettings = () => {
+    const next = !settingsOpen;
+    setSettingsOpen(next);
+    try {
+      localStorage.setItem(SETTINGS_STORAGE_KEY, String(next));
+    } catch {}
+  };
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.THEME, isDark ? "dark" : "light");
   }, [isDark]);
 
+  // Close profile panel when route changes (sync UI to navigation)
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.COLORS, JSON.stringify(colors));
-  }, [colors]);
-
-  useEffect(() => {
-    setProfileOpen(false);
+    const t = setTimeout(() => setProfileOpen(false), 0);
+    return () => clearTimeout(t);
   }, [location.pathname]);
+
+  // Agent can only access Online Appt; redirect to it if they hit any other route
+  useEffect(() => {
+    if (!canAccessReports && location.pathname !== "/app/online-appt") {
+      navigate("/app/online-appt", { replace: true });
+    }
+  }, [canAccessReports, location.pathname, navigate]);
+
+  // Auto-expand Settings when navigating to a settings submenu
+  useEffect(() => {
+    if (isSettingsSubmenuActive && !settingsOpen) setSettingsOpen(true);
+  }, [isSettingsSubmenuActive, settingsOpen]);
+
+  // Auto-expand Reports when navigating to a report submenu
+  useEffect(() => {
+    if (isReportSubmenuActive && !reportsOpen) setReportsOpen(true);
+  }, [isReportSubmenuActive, reportsOpen]);
 
   useEffect(() => {
     if (!profileOpen) return;
+    const onDown = (e) => {
+      if (profileRef.current && !profileRef.current.contains(e.target)) setProfileOpen(false);
+    };
     const onKeyDown = (e) => {
       if (e.key === "Escape") setProfileOpen(false);
     };
+    document.addEventListener("mousedown", onDown);
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
   }, [profileOpen]);
-
-  const activeMenu = useMemo(
-    () =>
-      MENU_ITEMS.find((item) =>
-        item.path === "/app"
-          ? location.pathname === "/app"
-          : location.pathname.startsWith(item.path),
-      ) ?? MENU_ITEMS[0],
-    [location.pathname],
-  );
 
   const handleLogout = () => {
     localStorage.removeItem("token");
@@ -109,12 +177,12 @@ export default function AppLayout() {
   const appVersion = import.meta.env.VITE_APP_VERSION ?? "v0.0.0";
 
   const ui = {
-    appBg: isDark ? "bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-900",
+    appBg: isDark ? "bg-slate-950 text-slate-100" : "bg-white text-slate-900",
     panel: isDark
       ? "border-slate-800/80 bg-slate-950/80"
       : "border-slate-200 bg-white/80",
-    panelSoft: isDark ? "bg-slate-950/60" : "bg-slate-100/50",
-    panelSolid: isDark ? "bg-slate-950/90" : "bg-white/90",
+    panelSoft: isDark ? "bg-slate-950/60" : "bg-white",
+    panelSolid: isDark ? "bg-slate-950/90" : "bg-white/95",
     textMuted: isDark ? "text-slate-400" : "text-slate-600",
     textSoft: isDark ? "text-slate-300" : "text-slate-700",
     divider: isDark ? "border-slate-800/80" : "border-slate-200",
@@ -122,16 +190,7 @@ export default function AppLayout() {
   };
 
   return (
-    <div
-      className={`flex min-h-screen ${ui.appBg}`}
-      style={{
-        backgroundImage: `radial-gradient(circle at top left, ${colors.accent}${
-          isDark ? "22" : "18"
-        }, transparent 55%), radial-gradient(circle at bottom right, ${
-          colors.accentSoft
-        }${isDark ? "22" : "18"}, transparent 55%)`,
-      }}
-    >
+    <div className={`flex min-h-screen ${ui.appBg}`}>
       {/* Sidebar */}
       <aside
         className={`relative z-10 flex w-64 shrink-0 flex-col border-r px-4 py-5 backdrop-blur-xl ${ui.panel} ${ui.divider}`}
@@ -155,88 +214,159 @@ export default function AppLayout() {
         </div>
 
         <nav className="flex-1 space-y-1">
-          {MENU_ITEMS.map((item) => (
-            <NavLink key={item.key} to={item.path}>
-              {({ isActive }) => (
-                <motion.div
-                  whileHover={{ x: 2 }}
-                  className={`group flex cursor-pointer items-center justify-between rounded-xl px-3 py-2 text-xs font-medium transition ${
-                    isActive
-                      ? isDark
-                        ? "bg-slate-800/80 text-slate-50"
-                        : "bg-slate-200 text-slate-900"
-                      : `${ui.textSoft} ${ui.hover}`
-                  }`}
+          {canAccessReports && (
+            <>
+              {/* 1. Dashboard */}
+              <NavLink to="/app/dashboard">
+                {({ isActive }) => (
+                  <Motion.div
+                    whileHover={{ x: 2 }}
+                    className={`group flex cursor-pointer items-center justify-between rounded-xl px-3 py-2 text-xs font-medium transition ${
+                      isActive
+                        ? isDark
+                          ? "bg-slate-800/80 text-slate-50"
+                          : "bg-slate-200 text-slate-900"
+                        : `${ui.textSoft} ${ui.hover}`
+                    }`}
+                  >
+                    <span>Dashboard</span>
+                    {activeMenu.key === "dashboard" && (
+                      <span className="h-1.5 w-1.5 rounded-full bg-medical" />
+                    )}
+                  </Motion.div>
+                )}
+              </NavLink>
+
+              {/* 3. Reports (toggle + submenus) */}
+              <div className="pt-0.5">
+                <button
+                  type="button"
+                  onClick={toggleReports}
+                  className={`group flex w-full cursor-pointer items-center justify-between rounded-xl px-3 py-2 text-xs font-medium transition ${ui.textSoft} ${ui.hover}`}
                 >
-                  <span>{item.label}</span>
-                  {item.key === activeMenu.key && (
-                    <span className="h-1.5 w-1.5 rounded-full bg-medical" />
+                  <span>Reports</span>
+                  <Motion.span
+                    animate={{ rotate: reportsOpen ? 0 : -90 }}
+                    transition={{ duration: 0.2 }}
+                    className="shrink-0"
+                  >
+                    {reportsOpen ? (
+                      <ChevronDown className="h-4 w-4 text-slate-400" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-slate-400" />
+                    )}
+                  </Motion.span>
+                </button>
+                <Motion.div
+                  initial={false}
+                  animate={{ height: reportsOpen ? "auto" : 0, opacity: reportsOpen ? 1 : 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="overflow-hidden"
+                >
+                  <div className="mt-0.5 space-y-0.5 pl-1">
+                    {REPORT_MENU_ITEMS.map((item) => (
+                      <NavLink key={item.key} to={item.path}>
+                        {({ isActive }) => (
+                          <Motion.div
+                            whileHover={{ x: 2 }}
+                            className={`group flex cursor-pointer items-center justify-between rounded-lg px-3 py-2 pl-4 text-xs font-medium transition ${
+                              isActive
+                                ? isDark
+                                  ? "bg-slate-800/80 text-slate-50"
+                                  : "bg-slate-200 text-slate-900"
+                                : `${ui.textSoft} ${ui.hover}`
+                            }`}
+                          >
+                            <span>{item.label}</span>
+                            {item.key === activeMenu.key && (
+                              <span className="h-1.5 w-1.5 rounded-full bg-medical" />
+                            )}
+                          </Motion.div>
+                        )}
+                      </NavLink>
+                    ))}
+                  </div>
+                </Motion.div>
+              </div>
+            </>
+          )}
+
+          {/* 4. Settings (admin/teamlead only): Team, Vonage */}
+          {canAccessReports && (
+            <div className="pt-0.5">
+              <button
+                type="button"
+                onClick={toggleSettings}
+                className={`group flex w-full cursor-pointer items-center justify-between rounded-xl px-3 py-2 text-xs font-medium transition ${ui.textSoft} ${ui.hover}`}
+              >
+                <span>Settings</span>
+                <Motion.span
+                  animate={{ rotate: settingsOpen ? 0 : -90 }}
+                  transition={{ duration: 0.2 }}
+                  className="shrink-0"
+                >
+                  {settingsOpen ? (
+                    <ChevronDown className="h-4 w-4 text-slate-400" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4 text-slate-400" />
                   )}
-                </motion.div>
-              )}
-            </NavLink>
-          ))}
+                </Motion.span>
+              </button>
+              <Motion.div
+                initial={false}
+                animate={{ height: settingsOpen ? "auto" : 0, opacity: settingsOpen ? 1 : 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="mt-0.5 space-y-0.5 pl-1">
+                  {SETTINGS_MENU_ITEMS.map((item) => (
+                    <NavLink key={item.key} to={item.path}>
+                      {({ isActive }) => (
+                        <Motion.div
+                          whileHover={{ x: 2 }}
+                          className={`group flex cursor-pointer items-center justify-between rounded-lg px-3 py-2 pl-4 text-xs font-medium transition ${
+                            isActive
+                              ? isDark
+                                ? "bg-slate-800/80 text-slate-50"
+                                : "bg-slate-200 text-slate-900"
+                              : `${ui.textSoft} ${ui.hover}`
+                          }`}
+                        >
+                          <span>{item.label}</span>
+                          {item.key === activeMenu.key && (
+                            <span className="h-1.5 w-1.5 rounded-full bg-medical" />
+                          )}
+                        </Motion.div>
+                      )}
+                    </NavLink>
+                  ))}
+                </div>
+              </Motion.div>
+            </div>
+          )}
+
+          {/* 5. Online Appt (all roles) */}
+          <NavLink to="/app/online-appt">
+            {({ isActive }) => (
+              <Motion.div
+                whileHover={{ x: 2 }}
+                className={`group flex cursor-pointer items-center justify-between rounded-xl px-3 py-2 text-xs font-medium transition ${
+                  isActive
+                    ? isDark
+                      ? "bg-slate-800/80 text-slate-50"
+                      : "bg-slate-200 text-slate-900"
+                    : `${ui.textSoft} ${ui.hover}`
+                }`}
+              >
+                <span>Online Appt</span>
+                {activeMenu.key === "online-appt" && (
+                  <span className="h-1.5 w-1.5 rounded-full bg-medical" />
+                )}
+              </Motion.div>
+            )}
+          </NavLink>
         </nav>
 
-        <div className={`mt-4 space-y-3 border-t pt-3 text-xs ${ui.divider}`}>
-          <button
-            type="button"
-            onClick={() => setIsDark((prev) => !prev)}
-            className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left ${
-              isDark ? "bg-slate-900/80 hover:bg-slate-800" : "bg-white hover:bg-slate-100"
-            }`}
-          >
-            <span className={ui.textSoft}>Daylight mode</span>
-            <span
-              className={`inline-flex h-4 w-7 items-center rounded-full px-0.5 transition ${
-                isDark ? "bg-slate-600" : "bg-medical"
-              }`}
-            >
-              <span
-                className={`h-3 w-3 rounded-full bg-white transition-transform ${
-                  isDark ? "translate-x-0" : "translate-x-3"
-                }`}
-              />
-            </span>
-          </button>
-
-          <div
-            className={`space-y-1 rounded-lg p-3 ${
-              isDark ? "bg-slate-900/80" : "bg-white"
-            }`}
-          >
-            <div
-              className={`mb-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${ui.textMuted}`}
-            >
-              App colors
-            </div>
-            {["primary", "accent", "accentSoft"].map((key) => (
-              <div
-                key={key}
-                className="flex items-center justify-between gap-2"
-              >
-                <span className={`text-[11px] capitalize ${ui.textSoft}`}>
-                  {key === "accentSoft" ? "Accent 2" : key}
-                </span>
-                <input
-                  type="color"
-                  value={colors[key]}
-                  onChange={(e) =>
-                    setColors((prev) => ({
-                      ...prev,
-                      [key]: e.target.value,
-                    }))
-                  }
-                  className={`h-5 w-10 cursor-pointer rounded border p-0.5 ${
-                    isDark
-                      ? "border-slate-700 bg-slate-900"
-                      : "border-slate-200 bg-white"
-                  }`}
-                />
-              </div>
-            ))}
-          </div>
-        </div>
       </aside>
 
       {/* Main content */}
@@ -245,69 +375,100 @@ export default function AppLayout() {
         <header
           className={`relative z-40 border-b px-3 py-3 sm:px-6 sm:py-3 backdrop-blur-xl ${ui.panel} ${ui.divider}`}
         >
-          <div className="flex w-full items-center justify-between">
-            <div className="flex flex-col">
-              <span className={`text-xs font-medium ${ui.textMuted}`}>
-                Welcome back
-              </span>
-              <span className="text-sm font-semibold">{profile.name}</span>
-            </div>
-
-            <div className="relative flex items-center gap-4">
+          <div className="flex w-full items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="flex flex-col">
+                <span className={`text-xs font-medium ${ui.textMuted}`}>
+                  Welcome back
+                </span>
+                <span className="text-sm font-semibold">{profile.name}</span>
+              </div>
               <button
                 type="button"
-                onClick={() => setProfileOpen(true)}
-                className={`flex items-center gap-2 rounded-xl border px-2 py-1.5 text-left text-xs transition ${
+                onClick={() => setIsDark((prev) => !prev)}
+                className={`flex items-center gap-2 rounded-xl border px-2.5 py-2 text-xs transition ${
                   isDark
                     ? "border-slate-800/80 bg-slate-950/60 hover:bg-slate-900/60"
                     : "border-slate-200 bg-white hover:bg-slate-100"
                 }`}
+                title={isDark ? "Switch to daylight" : "Switch to dark"}
               >
-                <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-medical to-healthcare text-xs font-semibold text-primary">
-                  {profile.avatar ? (
-                    <img
-                      src={profile.avatar}
-                      alt={profile.name}
-                      className="h-full w-full object-cover"
-                    />
+                <Motion.div
+                  key={isDark ? "moon" : "sun"}
+                  initial={{ rotate: -90, opacity: 0 }}
+                  animate={{ rotate: 0, opacity: 1 }}
+                  transition={{ duration: 0.25 }}
+                  className="flex items-center justify-center"
+                >
+                  {isDark ? (
+                    <Moon className="h-4 w-4 text-slate-300" />
                   ) : (
-                    profile.name
-                      .split(" ")
-                      .map((n) => n[0])
-                      .join("")
-                      .slice(0, 2)
+                    <Sun className="h-4 w-4 text-amber-500" />
                   )}
-                </div>
-                <div className="flex flex-col items-end">
-                  <div className="text-[11px] font-semibold">
-                    {profile.role}
-                  </div>
-                  <div className={`text-[11px] ${ui.textMuted}`}>Profile</div>
-                </div>
+                </Motion.div>
+                <span
+                  className={`inline-flex h-4 w-6 items-center rounded-full px-0.5 transition ${
+                    isDark ? "bg-slate-600" : "bg-amber-400/80"
+                  }`}
+                >
+                  <Motion.span
+                    className="h-3 w-3 rounded-full bg-white shadow-sm"
+                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    animate={{ x: isDark ? 0 : 8 }}
+                  />
+                </span>
               </button>
             </div>
           </div>
         </header>
 
-        <section className="relative flex-1 min-h-0 overflow-hidden px-3 py-4 sm:px-6 sm:py-5">
-          <div className="flex h-full w-full flex-col">
-            <Outlet context={{ activeMenu, colors }} />
+        <section className={`relative flex-1 min-h-0 overflow-auto px-3 py-4 sm:px-6 sm:py-5 ${isDark ? "bg-slate-950/50" : "bg-slate-50/80"}`}>
+          <div className="flex min-h-full w-full flex-col">
+            <Outlet context={{ activeMenu, isDark, ui }} />
           </div>
         </section>
       </main>
 
+      {/* Profile: fixed top-right, inside screen */}
+      <div className="fixed top-1 right-4 z-40 flex items-center sm:top-1 sm:right-1">
+        <button
+          type="button"
+          onClick={() => setProfileOpen(true)}
+          className={`flex items-center gap-2 rounded-xl border px-2 py-1.5 text-left text-xs transition ${
+            isDark
+              ? "border-slate-800/80 bg-slate-950/60 hover:bg-slate-900/60"
+              : "border-slate-200 bg-white hover:bg-slate-100"
+          }`}
+        >
+          <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-medical to-healthcare text-xs font-semibold text-primary">
+            {profile.avatar ? (
+              <img
+                src={profile.avatar}
+                alt={profile.name}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              profile.name
+                .split(" ")
+                .map((n) => n[0])
+                .join("")
+                .slice(0, 2)
+            )}
+          </div>
+          <div className="flex flex-col items-end">
+            <div className="text-[11px] font-semibold">{profile.role}</div>
+            <div className={`text-[11px] ${ui.textMuted}`}>Profile</div>
+          </div>
+        </button>
+      </div>
+
       {profileOpen && (
-        <>
-          <button
-            type="button"
-            aria-label="Close profile"
-            className="fixed inset-0 z-40 bg-black/40"
-            onClick={() => setProfileOpen(false)}
-          />
+        <div className="pointer-events-none fixed top-4 right-4 z-50 sm:top-6 sm:right-6">
           <aside
-            className={`fixed inset-y-0 right-0 z-50 w-full max-w-sm overflow-y-auto border-l shadow-2xl ${ui.panelSolid} ${ui.divider}`}
+            ref={profileRef}
+            className={`pointer-events-auto flex w-[320px] max-h-[calc(100vh-3rem)] flex-col overflow-hidden rounded-2xl border shadow-2xl backdrop-blur-xl ${ui.panelSolid} ${ui.divider}`}
           >
-            <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
+            <div className={`flex items-center justify-between gap-3 border-b px-4 py-3 ${ui.divider}`}>
               <div className="text-xs font-semibold">Profile</div>
               <button
                 type="button"
@@ -315,13 +476,14 @@ export default function AppLayout() {
                 className={`rounded-lg border px-2 py-1 text-[11px] font-semibold ${ui.divider} ${
                   isDark
                     ? "bg-slate-900/70 hover:bg-slate-800"
-                    : "bg-white hover:bg-slate-100"
+                    : "bg-slate-50 hover:bg-slate-100"
                 }`}
               >
                 Close
               </button>
             </div>
 
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
             <div className="p-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-medical to-healthcare text-sm font-semibold text-primary">
@@ -372,7 +534,7 @@ export default function AppLayout() {
               </div>
             </div>
 
-            <div className={`mt-auto border-t px-4 py-3 ${ui.divider}`}>
+            <div className={`mt-auto shrink-0 border-t px-4 py-3 ${ui.divider}`}>
               <button
                 type="button"
                 onClick={handleLogout}
@@ -381,11 +543,12 @@ export default function AppLayout() {
                 Logout
               </button>
             </div>
+            </div>
           </aside>
-        </>
+        </div>
       )}
 
-      <ChatWidget />
+      {canAccessReports && <ChatWidget />}
     </div>
   );
 }
