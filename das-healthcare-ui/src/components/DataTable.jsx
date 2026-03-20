@@ -1,5 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 
+const EyeIcon = ({ className = "" }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
 export default function DataTable({
   title,
   description,
@@ -45,6 +60,9 @@ export default function DataTable({
   const MAX_SAFE_PAGE_SIZE = 5000; // cap "All" to avoid rendering 50k rows at once
   const [internalPageSize, setInternalPageSize] = useState(100);
 
+  const [notesViewOpen, setNotesViewOpen] = useState(false);
+  const [notesViewText, setNotesViewText] = useState("");
+
   const search = searchValue !== undefined ? searchValue : internalSearch;
   const setSearch = onSearchChange ?? ((v) => setInternalSearch(v));
   const page = pageValue !== undefined ? pageValue : internalPage;
@@ -54,11 +72,85 @@ export default function DataTable({
 
   const sortType = columns.find((c) => c.accessorKey === sortKey)?.sortType;
 
+  const durationToSeconds = (v) => {
+    if (v == null) return NaN;
+    if (typeof v === "number" && Number.isFinite(v)) return v * 3600; // interpret as hours
+    const s = String(v).trim();
+    if (!s) return NaN;
+    if (!s.includes(":")) {
+      const asNum = Number(s);
+      return Number.isFinite(asNum) ? asNum * 3600 : NaN; // interpret as hours
+    }
+    const parts = s.split(":").map(Number);
+    if (parts.some((p) => Number.isNaN(p))) return NaN;
+    if (parts.length >= 3) return parts[0] * 3600 + parts[1] * 60 + (parts[2] || 0);
+    if (parts.length === 2) return parts[0] * 60 + (parts[1] || 0);
+    if (parts.length === 1) return parts[0] || 0;
+    return NaN;
+  };
+
   const compareValues = (av, bv) => {
     if (av == null && bv == null) return 0;
     if (av == null) return 1;
     if (bv == null) return -1;
     switch (sortType) {
+      case "weekday": {
+        // Expected values like: Mon, Tue, Wed, Thu, Fri, Sat, Sun
+        const order = {
+          mon: 1,
+          tue: 2,
+          wed: 3,
+          thu: 4,
+          fri: 5,
+          sat: 6,
+          sun: 7,
+        };
+        const toKey = (v) => String(v ?? "").trim().toLowerCase().slice(0, 3);
+        const ai = order[toKey(av)];
+        const bi = order[toKey(bv)];
+        if (ai == null && bi == null) return String(av).localeCompare(String(bv));
+        if (ai == null) return 1;
+        if (bi == null) return -1;
+        return ai - bi;
+      }
+      case "month": {
+        // Expected values like: Jan, Feb, ... Dec
+        const order = {
+          jan: 1,
+          feb: 2,
+          mar: 3,
+          apr: 4,
+          may: 5,
+          jun: 6,
+          jul: 7,
+          aug: 8,
+          sep: 9,
+          oct: 10,
+          nov: 11,
+          dec: 12,
+        };
+        const toKey = (v) => String(v ?? "").trim().toLowerCase().slice(0, 3);
+        const ai = order[toKey(av)];
+        const bi = order[toKey(bv)];
+        if (ai == null && bi == null) return String(av).localeCompare(String(bv));
+        if (ai == null) return 1;
+        if (bi == null) return -1;
+        return ai - bi;
+      }
+      case "week": {
+        // Expected values like: "Week 44"
+        const toNum = (v) => {
+          const s = String(v ?? "");
+          const m = s.match(/(\d+)/);
+          return m ? Number(m[1]) : NaN;
+        };
+        const an = toNum(av);
+        const bn = toNum(bv);
+        if (Number.isNaN(an) && Number.isNaN(bn)) return String(av).localeCompare(String(bv), undefined, { numeric: true });
+        if (Number.isNaN(an)) return 1;
+        if (Number.isNaN(bn)) return -1;
+        return an - bn;
+      }
       case "number": {
         const an = Number(av);
         const bn = Number(bv);
@@ -139,6 +231,21 @@ export default function DataTable({
       });
     }
   }, [onPaginationInfo, totalPages, currentPage, filteredRows.length]);
+
+  useEffect(() => {
+    if (!notesViewOpen) return;
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") setNotesViewOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [notesViewOpen]);
+
+  const openNotesView = (val) => {
+    const text = typeof val === "string" ? val : val == null ? "" : String(val);
+    setNotesViewText(text);
+    setNotesViewOpen(true);
+  };
 
   const handleHeaderClick = (accessorKey) => {
     if (sortKey === accessorKey) {
@@ -260,8 +367,8 @@ export default function DataTable({
                   </td>
                 </tr>
               ) : (
-                pageRows.map((row) => (
-                  <tr key={row.id ?? JSON.stringify(row)}>
+                pageRows.map((row, rowIndex) => (
+                  <tr key={row.id ?? row.Id ?? row.rec_id ?? rowIndex}>
                     {editable && editColumnFirst && (
                       <td className="px-3 py-2 whitespace-nowrap">
                         <button
@@ -279,6 +386,15 @@ export default function DataTable({
                         (typeof col.header === "string" && col.header.length > 14
                           ? 160
                           : 120);
+                      const accessorKey = col.accessorKey;
+                      const timeSeconds =
+                        accessorKey === "duration" || accessorKey === "LoggedInTime"
+                          ? durationToSeconds(row[accessorKey])
+                          : NaN;
+                      const timeShouldHighlight =
+                        (accessorKey === "duration" || accessorKey === "LoggedInTime") &&
+                        Number.isFinite(timeSeconds) &&
+                        (timeSeconds < 8 * 3600 || timeSeconds > 10 * 3600);
                       return (
                         <td
                           key={col.accessorKey}
@@ -288,7 +404,39 @@ export default function DataTable({
                             maxWidth: col.maxWidth,
                           }}
                         >
-                          {row[col.accessorKey]}
+                          {accessorKey === "duration" || accessorKey === "LoggedInTime" ? (
+                            <span
+                              className={`inline-flex items-center rounded px-1.5 py-0.5 ${
+                                timeShouldHighlight
+                                  ? isDark
+                                    ? "bg-pink-500/15 text-slate-100"
+                                    : "bg-pink-200/60 text-pink-900"
+                                  : ""
+                              }`}
+                            >
+                              {row[accessorKey]}
+                            </span>
+                          ) : accessorKey === "notes" ? (
+                            (() => {
+                              const raw = row[col.accessorKey];
+                              const text = typeof raw === "string" ? raw : raw == null ? "" : String(raw);
+                              const hasNotes = text.trim().length > 0;
+                              if (!hasNotes) return "";
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => openNotesView(text)}
+                                  className={`rounded-lg p-1 ${isDark ? "text-slate-300 hover:bg-slate-800 hover:text-slate-100" : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"}`}
+                                  aria-label="View notes"
+                                  title="View notes"
+                                >
+                                  <EyeIcon className="h-4 w-4" />
+                                </button>
+                              );
+                            })()
+                          ) : (
+                            row[accessorKey]
+                          )}
                         </td>
                       );
                     })}
@@ -336,6 +484,42 @@ export default function DataTable({
           </div>
         )}
       </div>
+
+      {notesViewOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-[10000] bg-slate-950"
+            aria-hidden
+            onClick={() => setNotesViewOpen(false)}
+          />
+          <div className="fixed inset-0 z-[10001] flex items-center justify-center p-4">
+            <div
+              role="dialog"
+              aria-modal="true"
+              className={`relative w-full max-w-lg rounded-xl border px-4 py-3 shadow-xl ${
+                isDark
+                  ? "border-slate-800 bg-slate-900 text-slate-100"
+                  : "border-slate-300 bg-white text-slate-900"
+              }`}
+            >
+              <div className="flex items-center justify-between border-b border-slate-800/60 pb-2">
+                <h3 className="text-sm font-semibold">Notes</h3>
+                <button
+                  type="button"
+                  onClick={() => setNotesViewOpen(false)}
+                  className={`rounded-lg p-1 ${isDark ? "text-slate-400 hover:bg-slate-800 hover:text-slate-200" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"}`}
+                  aria-label="Close notes popup"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="mt-3 max-h-[60vh] overflow-auto whitespace-pre-wrap text-xs">
+                {notesViewText}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
